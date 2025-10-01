@@ -1,0 +1,43 @@
+# Source control
+.git/
+.github/
+.gitignore
+
+# Development files
+test/
+tests/
+*.test.js
+*.spec.js
+coverage/
+.nyc_output/
+
+# Examples (keep if you want to include them)
+examples/
+
+# Build tools
+.travis.yml
+.gitlab-ci.yml
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+
+# Documentation source (if you generate docs)
+docs-src/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary
+tmp/
+temp/
