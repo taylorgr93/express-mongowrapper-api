@@ -1,0 +1,71 @@
+name: Publish to NPM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. Run tests (if you have them)
+      - name: Run tests
+        run: npm test
+        continue-on-error: false
+
+      # 5. Check if version changed
+      - name: Check if version changed
+        id: check
+        uses: EndBug/version-check@v2
+        with:
+          diff-search: true
+
+      # 6. Publish to NPM (only if version changed)
+      - name: Publish to NPM
+        if: steps.check.outputs.changed == 'true'
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # 7. Create GitHub Release (only if version changed)
+      - name: Create GitHub Release
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.check.outputs.version }}
+          release_name: Release v${{ steps.check.outputs.version }}
+          body: |
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+
+            ## Installation
+            ```bash
+            npm install express-mongowrapper-api@${{ steps.check.outputs.version }}
+            ```
+          draft: false
+          prerelease: false
+
+      # 8. Notify success
+      - name: Notify success
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          echo "✅ Published version ${{ steps.check.outputs.version }} to NPM"
+          echo "📦 https://www.npmjs.com/package/express-mongowrapper-api"
