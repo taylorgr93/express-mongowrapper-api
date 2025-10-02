@@ -1,6 +1,6 @@
 {
   "name": "express-mongowrapper-api",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Express.js API framework using mongoclienteasywrapper for MongoDB operations. Build REST APIs with CRUD operations, file uploads, and advanced features.",
   "main": "index.js",
   "scripts": {
@@ -50,7 +50,6 @@
     }
   ],
   "dependencies": {
-    "axios": "^0.27.2",
     "body-parser": "^1.20.0",
     "express": "^4.18.1",
     "express-validator": "^7.0.1",
@@ -60,5 +59,7 @@
     "uuid": "^8.3.2",
     "yup": "^1.3.3"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "axios": "^1.4.0"
+  }
 }

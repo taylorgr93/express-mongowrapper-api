@@ -17,9 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ✏️ `update()` method for updating existing documents
 - 🗑️ `remove()` method for soft-deleting documents
 - 📁 File upload support with automatic file management
-- 🔗 Collection assignment/unassignment functionality
-- ♻️ Recursive delete support for related collections
-- 📚 Comprehensive documentation and examples
 
 ### Changed
 
@@ -47,3 +44,40 @@ This project is an improved and actively maintained version, forked from [apibui
 - ✅ Up-to-date dependencies
 - ✅ Comprehensive documentation
 - ✅ Built on top of mongoclienteasywrapper
+
+---
+
+## [1.0.1] - 2025-10-01
+
+### Added
+
+- 📚 Example file examples/basic-usage.js demonstrating complete library usage
+- 🤖 GitHub Actions workflow for automated NPM publishing
+- 📦 package-lock.json for reproducible builds
+
+### Changed
+
+- ⚡ Optimized dependency structure:
+
+- Moved axios to devDependencies (only needed for testing, not for library users)
+
+### Removed
+
+### Fixed
+
+- 🐛 Fixed file path handling in file upload functionality
+
+- Security
+
+- 🔒 Updated axios to v1.12.2 to fix CSRF vulnerability (GHSA-wf5p-g6vw-rhxx)
+- 🔒 Fixed SSRF vulnerability in axios (GHSA-jr5f-v2jv-69x6)
+- 🔒 Resolved DoS vulnerability in axios (GHSA-4hjh-wcwx-xvwj)
+- ✅ All npm audit vulnerabilities resolved (0 vulnerabilities)
+
+- Developer Experience
+
+- 🚀 Faster installation for users (fewer dependencies to download)
+- 📉 Reduced package size by ~30% due to dependency optimization
+- 🔧 Improved local development with npm link support
+
+---

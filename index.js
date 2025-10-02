@@ -18,6 +18,192 @@ const {
 } = require("./middlewares/schemaValidatorExpress");
 const { validateSchemaYup } = require("./middlewares/schemaValidatorYup");
 
+const create = (params) => async (req, res, next) => {
+  params = params || {};
+  const {
+    Database,
+    Collection,
+    PathBaseFile,
+    URL,
+    ApiErrorFailDb,
+    AsyncFunctionAfter,
+    Middleware,
+  } = params;
+
+  const collection = Collection || req.originalUrl.match(re)[0];
+  const db = Database || req.database;
+
+  try {
+    // Extract assignments without mutating req.body
+    const { _Assign, ...bodyData } = req.body;
+    const asignaciones = _Assign || [];
+
+    // Object to save
+    const objToSave = {
+      ...bodyData,
+      datetime: new Date(),
+    };
+    console.log(objToSave);
+
+    // Insert into DB
+    const dbResponse = await MongoWraper.SavetoMongo(objToSave, collection, db);
+
+    // Process assignments
+    if (asignaciones.length > 0) {
+      const asignacionesConId = asignaciones.map((e) => ({
+        ...e,
+        [collection]: [dbResponse.insertedId],
+      }));
+
+      const promisesAssign = asignacionesConId.map((e) => Assign(e, db, db));
+      await Promise.allSettled(promisesAssign); // Changed to allSettled to avoid failing if one assignment fails
+    }
+
+    // Process files if they exist
+    if (req.files && req.files.file && req.files.file[0]) {
+      const dirDestino = `${PathBaseFile}/${db}/${collection}/${dbResponse.insertedId}/`;
+
+      // Create directory if it doesn't exist
+      if (!fs.existsSync(dirDestino)) {
+        await fs.promises.mkdir(dirDestino, { recursive: true });
+      }
+
+      const fotofile = req.files.file[0];
+      const pathDestino = dirDestino + fotofile.filename;
+
+      // Move file asynchronously
+      await fs.promises.rename(fotofile.path, pathDestino);
+
+      // Photo URL
+      const foto = `${URL}/${db}/${collection}/${dbResponse.insertedId}/${fotofile.filename}`;
+
+      // Update document with photo info
+      await MongoWraper.UpdateMongoBy_id(
+        dbResponse.insertedId,
+        {
+          foto: foto,
+          fotopath: pathDestino,
+        },
+        collection,
+        db
+      );
+
+      // Add to req.body for backwards compatibility
+      req.body.foto = foto;
+      req.body.fotopath = pathDestino;
+    }
+
+    // Get updated document
+    const dbResponseFind = await MongoWraper.FindOne(
+      dbResponse.insertedId,
+      collection,
+      db
+    );
+
+    // Execute after function if exists
+    if (AsyncFunctionAfter) {
+      await AsyncFunctionAfter(req, res, dbResponse);
+    }
+
+    // Prepare response
+    const objResp = {
+      status: "ok",
+      message: "completed",
+      data: dbResponseFind,
+      extra: req.extraresponse,
+    };
+
+    // If middleware, pass to next
+    if (Middleware) {
+      req.MidResponse = objResp;
+      return next();
+    }
+
+    // Send response
+    res.status(200).send(objResp);
+  } catch (err) {
+    console.error("Error in create:", err);
+
+    // Handle error properly
+    throw new ApiErrorData(400, ApiErrorFailDb || "db error", err);
+  }
+};
+
+const remove = (params) => async (req, res, next) => {
+  params = params || {};
+  const { Database, Collection, PathBaseFile, URL, Middleware } = params;
+
+  const collection = Collection || req.originalUrl.match(re)[0];
+  const db = Database || req.database;
+
+  try {
+    // Extract unassignments and recursive deletes without mutating req.body
+    const { _Unassign, _RecursiveDelete, ...bodyData } = req.body;
+    const desasignaciones = _Unassign || [];
+    const recursiveDelete = _RecursiveDelete || [];
+
+    // Delete document from DB (soft delete)
+    const dbResponse = await MongoWraper.ND_DeleteMongoby_id(
+      req.params._id,
+      collection,
+      db
+    );
+
+    // Process recursive deletes in related collections
+    if (recursiveDelete.length > 0) {
+      const promisesRecursiveDelete = recursiveDelete.map((collectionDelete) =>
+        MongoWraper.UpdateMongoMany(
+          { [collection + "_id"]: req.params._id },
+          { status: "deleted" },
+          collectionDelete,
+          db
+        )
+      );
+      await Promise.allSettled(promisesRecursiveDelete); // Changed to allSettled to avoid failing if one operation fails
+    }
+
+    // Process unassignments
+    if (desasignaciones.length > 0) {
+      const promisesUnAssign = desasignaciones.map((collectionDelete) =>
+        UnAssignIdToCollections(
+          collectionDelete,
+          collection,
+          req.params._id,
+          db
+        )
+      );
+      await Promise.allSettled(promisesUnAssign); // Changed to allSettled to avoid failing if one operation fails
+    }
+
+    // Prepare response
+    const objResp = {
+      status: "ok",
+      message: "completed",
+      data: dbResponse,
+    };
+
+    // If middleware, pass to next
+    if (Middleware) {
+      req.MidResponse = objResp;
+      return next();
+    }
+
+    // Send response
+    res.status(200).send(objResp);
+  } catch (err) {
+    console.error("Error in remove:", err);
+
+    // Handle error properly
+    const objResp = {
+      status: "error",
+      message: "db error",
+      data: err,
+    };
+    res.status(400).send(objResp);
+  }
+};
+
+// --- The following functions have not been cleaned yet, but they work ---
 const Assign = async (body, db0, db1) => {
   const collection = Object.keys(body);
   console.log(collection);
@@ -544,117 +730,6 @@ const createMultipleCore = (params) => async (req, res, next) => {
   return objResp;
 };
 
-const create = (params) => async (req, res, next) => {
-  params = params || {};
-  const {
-    Database,
-    Collection,
-    PathBaseFile,
-    URL,
-    ApiErrorFailDb,
-    AsyncFunctionAfter,
-    Middleware,
-  } = params;
-
-  const collection = Collection || req.originalUrl.match(re)[0];
-  const db = Database || req.database;
-
-  try {
-    // Extract assignments without mutating req.body
-    const { _Assign, ...bodyData } = req.body;
-    const asignaciones = _Assign || [];
-
-    // Object to save
-    const objToSave = {
-      ...bodyData,
-      datetime: new Date(),
-    };
-    console.log(objToSave);
-
-    // Insert into DB
-    const dbResponse = await MongoWraper.SavetoMongo(objToSave, collection, db);
-
-    // Process assignments
-    if (asignaciones.length > 0) {
-      const asignacionesConId = asignaciones.map((e) => ({
-        ...e,
-        [collection]: [dbResponse.insertedId],
-      }));
-
-      const promisesAssign = asignacionesConId.map((e) => Assign(e, db, db));
-      await Promise.allSettled(promisesAssign); // Changed to allSettled to avoid failing if one assignment fails
-    }
-
-    // Process files if they exist
-    if (req.files && req.files.file && req.files.file[0]) {
-      const dirDestino = `${PathBaseFile}/${db}/${collection}/${dbResponse.insertedId}/`;
-
-      // Create directory if it doesn't exist
-      if (!fs.existsSync(dirDestino)) {
-        await fs.promises.mkdir(dirDestino, { recursive: true });
-      }
-
-      const fotofile = req.files.file[0];
-      const pathDestino = dirDestino + fotofile.filename;
-
-      // Move file asynchronously
-      await fs.promises.rename(fotofile.path, pathDestino);
-
-      // Photo URL
-      const foto = `${URL}/${db}/${collection}/${dbResponse.insertedId}/${fotofile.filename}`;
-
-      // Update document with photo info
-      await MongoWraper.UpdateMongoBy_id(
-        dbResponse.insertedId,
-        {
-          foto: foto,
-          fotopath: pathDestino,
-        },
-        collection,
-        db
-      );
-
-      // Add to req.body for backwards compatibility
-      req.body.foto = foto;
-      req.body.fotopath = pathDestino;
-    }
-
-    // Get updated document
-    const dbResponseFind = await MongoWraper.FindOne(
-      dbResponse.insertedId,
-      collection,
-      db
-    );
-
-    // Execute after function if exists
-    if (AsyncFunctionAfter) {
-      await AsyncFunctionAfter(req, res, dbResponse);
-    }
-
-    // Prepare response
-    const objResp = {
-      status: "ok",
-      message: "completed",
-      data: dbResponseFind,
-      extra: req.extraresponse,
-    };
-
-    // If middleware, pass to next
-    if (Middleware) {
-      req.MidResponse = objResp;
-      return next();
-    }
-
-    // Send response
-    res.status(200).send(objResp);
-  } catch (err) {
-    console.error("Error in create:", err);
-
-    // Handle error properly
-    throw new ApiErrorData(400, ApiErrorFailDb || "db error", err);
-  }
-};
-
 const updatePatch = (params) => async (req, res, next) => {
   params = params ? params : {};
   const {
@@ -815,80 +890,6 @@ const updatePatchMany = (params) => async (req, res, next) => {
     return next();
   }
   res.status(200).send(objResp);
-};
-
-const remove = (params) => async (req, res, next) => {
-  params = params || {};
-  const { Database, Collection, PathBaseFile, URL, Middleware } = params;
-
-  const collection = Collection || req.originalUrl.match(re)[0];
-  const db = Database || req.database;
-
-  try {
-    // Extract unassignments and recursive deletes without mutating req.body
-    const { _Unassign, _RecursiveDelete, ...bodyData } = req.body;
-    const desasignaciones = _Unassign || [];
-    const recursiveDelete = _RecursiveDelete || [];
-
-    // Delete document from DB (soft delete)
-    const dbResponse = await MongoWraper.ND_DeleteMongoby_id(
-      req.params._id,
-      collection,
-      db
-    );
-
-    // Process recursive deletes in related collections
-    if (recursiveDelete.length > 0) {
-      const promisesRecursiveDelete = recursiveDelete.map((collectionDelete) =>
-        MongoWraper.UpdateMongoMany(
-          { [collection + "_id"]: req.params._id },
-          { status: "deleted" },
-          collectionDelete,
-          db
-        )
-      );
-      await Promise.allSettled(promisesRecursiveDelete); // Changed to allSettled to avoid failing if one operation fails
-    }
-
-    // Process unassignments
-    if (desasignaciones.length > 0) {
-      const promisesUnAssign = desasignaciones.map((collectionDelete) =>
-        UnAssignIdToCollections(
-          collectionDelete,
-          collection,
-          req.params._id,
-          db
-        )
-      );
-      await Promise.allSettled(promisesUnAssign); // Changed to allSettled to avoid failing if one operation fails
-    }
-
-    // Prepare response
-    const objResp = {
-      status: "ok",
-      message: "completed",
-      data: dbResponse,
-    };
-
-    // If middleware, pass to next
-    if (Middleware) {
-      req.MidResponse = objResp;
-      return next();
-    }
-
-    // Send response
-    res.status(200).send(objResp);
-  } catch (err) {
-    console.error("Error in remove:", err);
-
-    // Handle error properly
-    const objResp = {
-      status: "error",
-      message: "db error",
-      data: err,
-    };
-    res.status(400).send(objResp);
-  }
 };
 
 // Agrega icono
